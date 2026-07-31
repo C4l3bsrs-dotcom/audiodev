@@ -1,0 +1,186 @@
+import numpy as np
+import soundfile as sf
+
+# Configurações
+sr = 44100
+dur = 60
+
+t = np.linspace(0, dur, sr * dur, endpoint=False)
+
+# -----------------------------
+# DRONE
+# -----------------------------
+
+drone_freqs = [55, 110, 220, 440]
+
+drone = np.zeros_like(t)
+
+for f in drone_freqs:
+    drone += np.sin(2 * np.pi * f * t)
+
+drone /= len(drone_freqs)
+
+# LFO (faz o volume respirar)
+lfo = 0.5 + 0.5 * np.sin(2 * np.pi * 0.05 * t)
+drone *= lfo
+
+# -----------------------------
+# ACORDE DISSONANTE
+# -----------------------------
+
+acorde = np.zeros_like(t)
+
+freqs = [110, 146.83, 196, 277.18]
+
+for f in freqs:
+    acorde += np.sin(2 * np.pi * f * t)
+
+acorde /= len(freqs)
+
+# -----------------------------
+# RUÍDO
+# -----------------------------
+
+ambient_noise = np.random.normal(0, 0.02, len(t))
+
+# -----------------------------
+# KICK
+# -----------------------------
+
+kick = np.zeros_like(t)
+
+kick_dur = int(sr * 0.4)
+tk = np.arange(kick_dur) / sr
+
+# Frequência descendo
+freq = np.linspace(140, 40, kick_dur)
+
+# Fase acumulada
+fase = np.cumsum(2 * np.pi * freq / sr)
+
+# Onda
+onda = np.sin(fase)
+
+# Envelope
+envelope = np.exp(-12 * tk)
+onda *= envelope
+
+# Clique inicial
+onda[:80] += np.random.normal(0, 0.15, 80)
+
+# Um kick por segundo
+for inicio in range(0, len(kick), sr):
+    fim = min(inicio + kick_dur, len(kick))
+    kick[inicio:fim] += onda[:fim - inicio]
+
+# Coloca um kick a cada 2 segundos
+for inicio in range(0, len(t), sr * 2):
+    fim = min(inicio + kick_dur, len(t))
+    tamanho = fim - inicio
+    kick[inicio:fim] += onda[:tamanho]
+# -----------------------------
+# SNARE
+# -----------------------------
+
+snare = np.zeros_like(t)
+
+snare_dur = int(sr * 0.15)
+ts = np.arange(snare_dur) / sr
+
+# Ruído branco
+snare_noise = np.random.normal(0, 1, snare_dur)
+
+# Pequeno tom
+tone = np.sin(2 * np.pi * 180 * ts)
+
+# Envelope
+env = np.exp(-30 * ts)
+
+snare_wave = (snare_noise * 0.8 + tone * 0.2) * env
+
+# Snare nos tempos 2 e 4
+for inicio in range(sr, len(snare), sr * 2):
+    fim = min(inicio + snare_dur, len(snare))
+    snare[inicio:fim] += snare_wave[:fim - inicio]
+    # -----------------------------
+# HI-HAT
+# -----------------------------
+
+hihat = np.zeros_like(t)
+
+hat_dur = int(sr * 0.03)
+th = np.arange(hat_dur) / sr
+
+hat_noise = np.random.normal(0, 1, hat_dur)
+
+hat_env = np.exp(-80 * th)
+
+hat_wave = hat_noise * hat_env * 0.3
+
+# Um hi-hat a cada meio segundo
+for inicio in range(0, len(hihat), sr // 2):
+    fim = min(inicio + hat_dur, len(hihat))
+    hihat[inicio:fim] += hat_wave[:fim - inicio]
+    # -----------------------------
+# CLAP
+# -----------------------------
+
+clap = np.zeros_like(t)
+
+clap_dur = int(sr * 0.12)
+tc = np.arange(clap_dur) / sr
+
+for atraso in [0, 400, 800]:
+    ruido = np.random.normal(0, 1, clap_dur - atraso)
+    env = np.exp(-40 * tc[:clap_dur - atraso])
+    clap[:clap_dur - atraso] += ruido * env * 0.4
+    bass = np.sin(2 * np.pi * 55 * t) * 0.2
+# -----------------------------
+# MISTURA
+# -----------------------------
+
+
+mix = (
+    drone * 0.18 +
+    acorde * 0.23 +
+    bass * 0.30 +
+    kick * 0.90 +
+    snare * 0.50 +
+    hihat * 0.25 +
+    clap * 0.40 +
+    ambient_noise * 0.02
+)
+
+
+# -----------------------------
+# GLITCHES
+# -----------------------------
+
+for _ in range(40):
+
+    tamanho = np.random.randint(300, 1500)
+
+    origem = np.random.randint(0, len(mix) - tamanho)
+
+    destino = np.random.randint(0, len(mix) - tamanho)
+
+    trecho = mix[origem:origem+tamanho]
+
+    if np.random.rand() < 0.5:
+        trecho = trecho[::-1]
+
+    mix[destino:destino+tamanho] = trecho
+
+# -----------------------------
+# NORMALIZA
+# -----------------------------
+
+mix /= np.max(np.abs(mix))
+
+# -----------------------------
+# EXPORTA
+# -----------------------------
+
+sf.write("ambient.wav", mix, sr)
+
+print("✅ ambient.wav criado com sucesso!")

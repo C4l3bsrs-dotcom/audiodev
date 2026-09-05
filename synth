@@ -1,0 +1,228 @@
+import numpy as np
+import sounddevice as sd
+from pynput import keyboard
+
+
+# ==========================================
+# CONFIGURAÇÕES
+# ==========================================
+
+SAMPLE_RATE = 44100
+
+VOLUME = 0.2
+
+TIPO_DE_ONDA = "saw"
+
+
+# ==========================================
+# NOTAS MUSICAIS
+# ==========================================
+
+notas = {
+    "C4": 261.63,
+    "D4": 293.66,
+    "E4": 329.63,
+    "F4": 349.23,
+    "G4": 392.00,
+    "A4": 440.00,
+    "B4": 493.88,
+    "C5": 523.25
+}
+
+
+# ==========================================
+# TECLAS DO COMPUTADOR
+# ==========================================
+
+teclas = {
+    "a": "C4",
+    "s": "D4",
+    "d": "E4",
+    "f": "F4",
+    "g": "G4",
+    "h": "A4",
+    "j": "B4",
+    "k": "C5"
+}
+
+
+# ==========================================
+# OSCILADOR
+# ==========================================
+
+def oscilador(frequencia, duracao, tipo):
+
+    quantidade_de_amostras = int(
+        SAMPLE_RATE * duracao
+    )
+
+    tempo = np.linspace(
+        0,
+        duracao,
+        quantidade_de_amostras,
+        endpoint=False
+    )
+
+    if tipo == "sine":
+
+        onda = np.sin(
+            2 * np.pi * frequencia * tempo
+        )
+
+    elif tipo == "square":
+
+        onda = np.sign(
+            np.sin(
+                2 * np.pi * frequencia * tempo
+            )
+        )
+
+    elif tipo == "saw":
+
+        onda = 2 * (
+            frequencia * tempo
+            - np.floor(
+                0.5 + frequencia * tempo
+            )
+        )
+
+    else:
+
+        raise ValueError(
+            "Tipo de onda inválido!"
+        )
+
+    return onda
+
+
+# ==========================================
+# ENVELOPE ADSR
+# ==========================================
+
+def adsr(
+    duracao,
+    attack=0.05,
+    decay=0.1,
+    sustain=0.7,
+    release=0.2
+):
+
+    quantidade_total = int(
+        SAMPLE_RATE * duracao
+    )
+
+    quantidade_attack = int(
+        SAMPLE_RATE * attack
+    )
+
+    quantidade_decay = int(
+        SAMPLE_RATE * decay
+    )
+
+    quantidade_release = int(
+        SAMPLE_RATE * release
+    )
+
+    quantidade_sustain = (
+        quantidade_total
+        - quantidade_attack
+        - quantidade_decay
+        - quantidade_release
+    )
+
+    ataque = np.linspace(
+        0,
+        1,
+        quantidade_attack
+    )
+
+    decaimento = np.linspace(
+        1,
+        sustain,
+        quantidade_decay
+    )
+
+    sustentacao = np.full(
+        max(0, quantidade_sustain),
+        sustain
+    )
+
+    liberacao = np.linspace(
+        sustain,
+        0,
+        quantidade_release
+    )
+
+    envelope = np.concatenate([
+        ataque,
+        decaimento,
+        sustentacao,
+        liberacao
+    ])
+
+    return envelope[:quantidade_total]
+
+
+# ==========================================
+# TOCAR UMA NOTA
+# ==========================================
+
+def tocar_nota(nome_da_nota, duracao=0.5):
+
+    frequencia = notas[nome_da_nota]
+
+    onda = oscilador(
+        frequencia,
+        duracao,
+        TIPO_DE_ONDA
+    )
+
+    envelope = adsr(duracao)
+
+    onda = onda * envelope
+
+    onda = onda * VOLUME
+
+    sd.play(
+        onda,
+        SAMPLE_RATE
+    )
+
+    sd.wait()
+
+
+# ==========================================
+# QUANDO UMA TECLA FOR PRESSIONADA
+# ==========================================
+
+def quando_pressionar(tecla):
+
+    try:
+
+        tecla_pressionada = tecla.char.lower()
+
+        if tecla_pressionada in teclas:
+
+            nome_da_nota = teclas[
+                tecla_pressionada
+            ]
+
+            tocar_nota(
+                nome_da_nota,
+                0.5
+            )
+
+    except AttributeError:
+
+        pass
+
+
+# ==========================================
+# OUVIR O TECLADO
+# ==========================================
+
+with keyboard.Listener(
+    on_press=quando_pressionar
+) as listener:
+
+    listener.join()
